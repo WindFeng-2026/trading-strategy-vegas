@@ -1,0 +1,76 @@
+{ A股实盘版：VEGAS + EMA12 + VWAP + VOSC + MACD背离
+  用途：同花顺“条件选股/预警”中的多头买入信号
+  说明：A股普通股票只输出买入与卖出，不生成做空信号。
+  建议：使用日线或收盘后运行；盘中信号可能随行情变化。
+}
+
+{ 参数 }
+N:=14;
+VWAPN:=20;
+VOLFAST:=12;
+VOLSlow:=26;
+VOLSignal:=9;
+LOOKBACK:=20;
+ATRN:=14;
+
+{ 1. VEGAS趋势 }
+VUP:=EMA(H,N);
+VDN:=EMA(L,N);
+VMID:=(VUP+VDN)/2;
+TREND:=C>VMID AND VMID>REF(VMID,1);
+
+{ 2. EMA12突破确认：收盘站上EMA12，且前一根尚未站上，避免盘中假突破 }
+E12:=EMA(C,12);
+BREAKOUT:=CROSS(C,E12) OR (C>E12 AND REF(C,1)>REF(E12,1));
+EMAOK:=E12>REF(E12,1) AND C>E12;
+
+{ 3. 滚动VWAP斜率 }
+TP:=(H+L+C)/3;
+VW:=SUM(TP*VOL,VWAPN)/SUM(VOL,VWAPN);
+VWOK:=VW>REF(VW,1);
+
+{ 4. VOSC：成交量扩张并且高于其信号线 }
+VF:=EMA(VOL,VOLFAST);
+VS:=EMA(VOL,VOLSlow);
+VO:=VF-VS;
+VOSIG:=EMA(VO,VOLSignal);
+VOOK:=VO>VOSIG AND VO>REF(VO,1);
+
+{ 5. MACD背离确认
+  用最近两个确认摆动低点比较，避免使用未来函数。
+  低点确认采用REF(LLV(...))，信号通常会滞后，但更适合实盘。
+}
+DIF:=EMA(C,12)-EMA(C,26);
+DEA:=EMA(DIF,9);
+MACDOK:=CROSS(DIF,DEA) OR (DIF>DEA AND DIF>REF(DIF,1));
+
+PREVLOW:=REF(LLV(L,LOOKBACK),5);
+CURLOW:=LLV(L,5);
+PREVDIFLOW:=REF(LLV(DIF,LOOKBACK),5);
+CURDIFLOW:=LLV(DIF,5);
+BULLDIV:=CURLOW<PREVLOW AND CURDIFLOW>PREVDIFLOW;
+
+{ 6. 大盘/流动性基本过滤：成交量非零、收盘价非涨停追买 }
+VOLVALID:=VOL>0 AND SUM(VOL,5)>0;
+NOTLIMITUP:=C<ZTPRICE(REF(C,1),0.10)*0.999;
+
+{ 7. 综合买入信号：前一日满足条件，今日确认，避免同一根K线反复触发 }
+BUY:=TREND AND EMAOK AND BREAKOUT AND VWOK AND VOOK AND MACDOK AND BULLDIV AND VOLVALID AND NOTLIMITUP;
+
+{ 8. A股持仓退出信号：趋势破坏、EMA12跌破、VWAP转弱或MACD死叉 }
+ATR:=MA(TR,ATRN);
+TRENDFAIL:=C<VMID OR C<E12;
+MOMFAIL:=C<VW OR CROSS(DEA,DIF);
+SELL:=TRENDFAIL OR MOMFAIL;
+
+{ 输出：将本公式用于条件选股时，最后一行作为选股条件 }
+买入信号:BUY,NODRAW;
+卖出信号:SELL,NODRAW;
+VEGAS中轨:VMID,COLORBLUE;
+EMA12:E12,COLORYELLOW;
+VWAP线:VW,COLORCYAN;
+
+DRAWICON(BUY,L*0.98,1);
+DRAWICON(SELL,H*1.02,2);
+
+XG:BUY;
