@@ -1,135 +1,327 @@
-# VEGAS通道交易策略
+# VEGAS通道交易策略（完整版）
 
-基于 VEGAS 通道、EMA12、VWAP 斜率、VOSC 和 MACD 背离的同花顺策略研究项目。
+## 一、策略说明
 
-> **免责声明：** 本项目仅供学习、研究和回测使用，不构成投资建议。A股交易存在市场、流动性、滑点、手续费及策略失效风险，请先进行充分回测和模拟交易。
+本策略按照以下流程执行：
 
-## 策略流程
+1. VEGAS通道 → 判断趋势方向
+2. EMA12过滤 → 过滤真假突破
+3. VWAP斜率 → 判断成本方向
+4. VOSC变化 → 判断成交量能大小变化
+5. MACD背离 → 确定最终入场时机
 
-```text
-VEGAS通道 → 判断趋势方向
-    ↓
-EMA12过滤 → 过滤真假突破
-    ↓
-VWAP斜率 → 判断成本方向
-    ↓
-VOSC变化 → 判断成交量能大小变化
-    ↓
-MACD背离 → 确定最终入场时机
-```
+适用于：
+- 中国大陆A股（以多头为主）
+- 指数、ETF、强势个股
+- 思路用于回测和量化策略研究
 
-## 指标逻辑
+> 免责声明：仅用于学习、研究和回测，不构成投资建议。
 
-### 1. VEGAS通道：判断趋势方向
+---
 
-本项目将 VEGAS 通道实现为基于 EMA 的动态通道：
-
-- 上轨：`EMA(HIGH, N)`
-- 下轨：`EMA(LOW, N)`
-- 中轨：`(上轨 + 下轨) / 2`
-- 收盘价位于中轨上方，且中轨上行：多头环境
-- 收盘价位于中轨下方，且中轨下行：空头环境
-
-不同软件或资料对 VEGAS 通道的定义可能不同，实盘前应统一公式定义并进行参数测试。
-
-### 2. EMA12：过滤真假突破
-
-- 多头过滤：收盘价在 EMA12 上方，且 EMA12 高于前一周期
-- 空头过滤：收盘价在 EMA12 下方，且 EMA12 低于前一周期
-- 对突破信号可增加“收盘确认”，避免盘中刺穿后回落造成假突破
-
-### 3. VWAP 斜率：判断成本方向
-
-滚动 VWAP 定义为：
+## 二、同花顺公式（完整版）
 
 ```text
-VWAP = SUM(CLOSE × VOL, N) / SUM(VOL, N)
+{ =========================================================
+  VEGAS趋势 + EMA12 + VWAP + VOSC + MACD 综合策略（完整版）
+  用途：A股/指数/ETF趋势交易信号
+  适合：同花顺公式编辑器直接使用
+  说明：
+  1. VEGAS通道判断趋势方向
+  2. EMA12过滤真假突破
+  3. VWAP斜率判断成本方向
+  4. VOSC判断量能扩张/萎缩
+  5. MACD背离确认最终入场时机
+  ========================================================= }
+
+{ =========================
+  1. VEGAS通道
+  ========================= }
+VEGAS_N := 14;
+UpperBand := EMA(HIGH, VEGAS_N);
+LowerBand := EMA(LOW, VEGAS_N);
+MiddleBand := (UpperBand + LowerBand) / 2;
+
+TrendUp := CLOSE > MiddleBand AND MiddleBand > REF(MiddleBand, 1);
+TrendDown := CLOSE < MiddleBand AND MiddleBand < REF(MiddleBand, 1);
+
+{ =========================
+  2. EMA12过滤
+  ========================= }
+EMA12 := EMA(CLOSE, 12);
+EMA12_Bull := CLOSE > EMA12 AND EMA12 > REF(EMA12, 1);
+EMA12_Bear := CLOSE < EMA12 AND EMA12 < REF(EMA12, 1);
+
+{ =========================
+  3. VWAP斜率（滚动）
+  ========================= }
+VWAP_N := 20;
+TypicalPrice := (HIGH + LOW + CLOSE) / 3;
+VWAP := SUM(TypicalPrice * VOL, VWAP_N) / SUM(VOL, VWAP_N);
+VWAP_Bull := VWAP > REF(VWAP, 1);
+VWAP_Bear := VWAP < REF(VWAP, 1);
+
+{ =========================
+  4. VOSC量能变化
+  ========================= }
+VOSC_FAST := 12;
+VOSC_SLOW := 26;
+VOSC_SIG := 9;
+
+VOL_FAST := EMA(VOL, VOSC_FAST);
+VOL_SLOW := EMA(VOL, VOSC_SLOW);
+VOSC := VOL_FAST - VOL_SLOW;
+VOSC_SIGLINE := EMA(VOSC, VOSC_SIG);
+VOSC_Bull := VOSC > VOSC_SIGLINE AND VOSC > REF(VOSC, 1);
+VOSC_Bear := VOSC < VOSC_SIGLINE AND VOSC < REF(VOSC, 1);
+
+{ =========================
+  5. MACD背离
+  ========================= }
+MACD_FAST := 12;
+MACD_SLOW := 26;
+MACD_SIG := 9;
+DIF := EMA(CLOSE, MACD_FAST) - EMA(CLOSE, MACD_SLOW);
+DEA := EMA(DIF, MACD_SIG);
+MACD_BAR := 2 * (DIF - DEA);
+
+PriceLow10 := LLV(LOW, 10);
+PriceHigh10 := HHV(HIGH, 10);
+DIFLow10 := LLV(DIF, 10);
+DIFHigh10 := HHV(DIF, 10);
+
+BullishDivergence := LOW < PriceLow10 AND DIF > DIFLow10 AND DIF > DEA;
+BearishDivergence := HIGH > PriceHigh10 AND DIF < DIFHigh10 AND DIF < DEA;
+
+{ =========================
+  6. 止损/止盈（建议）
+  ========================= }
+{ 以中轨作为止损参考：
+  多头止损：价格跌破中轨
+  空头止损：价格突破中轨
+}
+StopLossLong := CLOSE < MiddleBand;
+StopLossShort := CLOSE > MiddleBand;
+
+{ =========================
+  7. 综合买卖信号
+  ========================= }
+BuySignal := TrendUp AND EMA12_Bull AND VWAP_Bull AND VOSC_Bull AND BullishDivergence AND NOT(StopLossLong);
+SellSignal := TrendDown AND EMA12_Bear AND VWAP_Bear AND VOSC_Bear AND BearishDivergence AND NOT(StopLossShort);
+
+{ =========================
+  8. 图表输出
+  ========================= }
+DRAWLINE(UpperBand, LINESTICK, 2, RGB(255, 0, 0), 'VEGAS上轨');
+DRAWLINE(MiddleBand, LINESTICK, 2, RGB(0, 120, 255), 'VEGAS中轨');
+DRAWLINE(LowerBand, LINESTICK, 2, RGB(0, 200, 100), 'VEGAS下轨');
+DRAWLINE(EMA12, LINESTICK, 2, RGB(255, 180, 0), 'EMA12');
+DRAWLINE(VWAP, LINESTICK, 2, RGB(255, 120, 0), 'VWAP');
+
+IF(BuySignal, DRAWICON(CLOSE, '↑', 'color:green', 'size:18', '买入'));
+IF(SellSignal, DRAWICON(CLOSE, '↓', 'color:red', 'size:18', '卖出'));
+
+{ =========================
+  9. 输出结果值
+  ========================= }
+IF(BuySignal, 1, 0);
+IF(SellSignal, -1, 0);
 ```
 
-- 多头过滤：`VWAP > REF(VWAP, 1)`
-- 空头过滤：`VWAP < REF(VWAP, 1)`
-- `N` 应根据交易周期调整；日内策略可使用当日累计 VWAP
+注意：
+- 这段代码适合先做“信号验证”，适合同花顺公式测试。
+- A股手续费、滑点、涨跌停、T+1以及停牌会影响实际交易。
+- 不建议直接用单一站点信号完全实盘。
 
-### 4. VOSC：判断量能变化
+---
 
-```text
-VOSC = EMA(VOL, 12) - EMA(VOL, 26)
-Signal = EMA(VOSC, 9)
+## 三、Python回测版（完整版）
+
+```python
+import pandas as pd
+import numpy as np
+
+
+def ema(series: pd.Series, period: int) -> pd.Series:
+    return series.ewm(span=period, adjust=False).mean()
+
+
+def vwap(df: pd.DataFrame, window: int = 20) -> pd.Series:
+    tp = (df['high'] + df['low'] + df['close']) / 3.0
+    pv = tp * df['volume']
+    vwap = pv.rolling(window).sum() / df['volume'].rolling(window).sum()
+    return vwap
+
+
+def vegas_band(df: pd.DataFrame, n: int = 14):
+    upper = ema(df['high'], n)
+    lower = ema(df['low'], n)
+    middle = (upper + lower) / 2.0
+    return upper, middle, lower
+
+
+def calc_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9):
+    dif = ema(df['close'], fast) - ema(df['close'], slow)
+    dea = ema(dif, signal)
+    macd = 2 * (dif - dea)
+    return dif, dea, macd
+
+
+def calc_vosc(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9):
+    vol_fast = ema(df['volume'], fast)
+    vol_slow = ema(df['volume'], slow)
+    vosc = vol_fast - vol_slow
+    vosc_signal = ema(vosc, signal)
+    return vosc, vosc_signal
+
+
+def compute_strategy(df: pd.DataFrame):
+    df = df.copy()
+    df = df.sort_values('date').reset_index(drop=True)
+
+    # 1) VEGAS
+    upper, middle, lower = vegas_band(df, n=14)
+    df['vegas_upper'] = upper
+    df['vegas_middle'] = middle
+    df['vegas_lower'] = lower
+    df['trend_up'] = (df['close'] > df['vegas_middle']) & (df['vegas_middle'] > df['vegas_middle'].shift(1))
+    df['trend_down'] = (df['close'] < df['vegas_middle']) & (df['vegas_middle'] < df['vegas_middle'].shift(1))
+
+    # 2) EMA12
+    ema12 = ema(df['close'], 12)
+    df['ema12'] = ema12
+    df['ema12_long'] = (df['close'] > df['ema12']) & (df['ema12'] > df['ema12'].shift(1))
+    df['ema12_short'] = (df['close'] < df['ema12']) & (df['ema12'] < df['ema12'].shift(1))
+
+    # 3) VWAP
+    df['vwap'] = vwap(df, window=20)
+    df['vwap_long'] = df['vwap'] > df['vwap'].shift(1)
+    df['vwap_short'] = df['vwap'] < df['vwap'].shift(1)
+
+    # 4) VOSC
+    vosc, vosc_signal = calc_vosc(df, 12, 26, 9)
+    df['vosc'] = vosc
+    df['vosc_signal'] = vosc_signal
+    df['vosc_long'] = (df['vosc'] > df['vosc_signal']) & (df['vosc'] > df['vosc'].shift(1))
+    df['vosc_short'] = (df['vosc'] < df['vosc_signal']) & (df['vosc'] < df['vosc'].shift(1))
+
+    # 5) MACD
+    dif, dea, macd = calc_macd(df, 12, 26, 9)
+    df['dif'] = dif
+    df['dea'] = dea
+    df['macd'] = macd
+
+    # 价格与DIF背离
+    df['low_10'] = df['low'].rolling(10).min()
+    df['high_10'] = df['high'].rolling(10).max()
+    df['dif_low_10'] = df['dif'].rolling(10).min()
+    df['dif_high_10'] = df['dif'].rolling(10).max()
+
+    df['bull_div'] = (df['low'] < df['low_10'].shift(1)) & (df['dif'] > df['dif_low_10'].shift(1)) & (df['dif'] > df['dea'])
+    df['bear_div'] = (df['high'] > df['high_10'].shift(1)) & (df['dif'] < df['dif_high_10'].shift(1)) & (df['dif'] < df['dea'])
+
+    # 6) 交易信号
+    df['buy_signal'] = (
+        df['trend_up'] &
+        df['ema12_long'] &
+        df['vwap_long'] &
+        df['vosc_long'] &
+        df['bull_div']
+    )
+
+    df['sell_signal'] = (
+        df['trend_down'] &
+        df['ema12_short'] &
+        df['vwap_short'] &
+        df['vosc_short'] &
+        df['bear_div']
+    )
+
+    return df
+
+
+def evaluate_strategy(df: pd.DataFrame):
+    df = compute_strategy(df)
+
+    # 交易状态模拟（简化版）
+    cash = 100000.0
+    position = 0
+    holdings = 0.0
+    trade_log = []
+    total_fee = 0.0
+
+    for i in range(1, len(df)):
+        close = df.loc[i, 'close']
+        if df.loc[i, 'buy_signal'] and position == 0:
+            # 以收盘价买入
+            qty = cash / close
+            holdings = qty
+            position = 1
+            trade_log.append({'date': df.loc[i, 'date'], 'type': 'buy', 'price': close, 'qty': qty})
+        elif df.loc[i, 'sell_signal'] and position == 1:
+            cash = holdings * close * (1 - 0.0008)
+            total_fee += holdings * close * 0.0008
+            position = 0
+            holdings = 0.0
+            trade_log.append({'date': df.loc[i, 'date'], 'type': 'sell', 'price': close, 'qty': qty if 'qty' in locals() else 0})
+
+    final_value = cash + holdings * df.iloc[-1]['close']
+    print('最终净值:', round(final_value, 2))
+    print('累计手续费:', round(total_fee, 2))
+    print('交易次数:', len(trade_log))
+    return df, trade_log
+
+
+if __name__ == '__main__':
+    # 读取示例：字段要求: date, open, high, low, close, volume
+    # df = pd.read_csv('data.csv', parse_dates=['date'])
+    # df = df.sort_values('date').reset_index(drop=True)
+    # result, trades = evaluate_strategy(df)
+    # print(result[['date', 'close', 'buy_signal', 'sell_signal']].tail(20))
+    pass
 ```
 
-- 量能增强：`VOSC > Signal`，或 VOSC 较前值上升
-- 量能减弱：`VOSC < Signal`，或 VOSC 较前值下降
-- 不建议仅用“VOSC 大于零”判断买入，应结合价格方向和突破确认
+---
 
-### 5. MACD 背离：确定入场时机
+## 四、实战落地建议（非常关键）
 
-```text
-DIF = EMA(CLOSE, 12) - EMA(CLOSE, 26)
-DEA = EMA(DIF, 9)
-MACD = 2 × (DIF - DEA)
-```
+1. 先做“同花顺公式验证”，不要直接实盘
+2. 先用 15 分钟/30 分钟/日线测试参数稳定性
+3. 只看强趋势股票，不要在弱市中强行做多
+4. 建议在以下条件下放大信号质量：
+   - 成交量放大
+   - 价格站稳均线
+   - 盘中不破VEGAS下轨
+5. 加入止损：
+   - 长线：跌破VEGAS中轨止损
+   - 日内：回落到VWAP下方或EMA12下方止损
+6. 资金管理：
+   - 单次交易不超过账户 1%
+   - 连续亏损不继续加码
 
-- 看多背离：价格形成更低低点，而 DIF 或 MACD 未形成更低低点
-- 看空背离：价格形成更高高点，而 DIF 或 MACD 未形成更高高点
-- 背离只是预警，建议等待 DIF 上穿 DEA、价格重新站上 EMA12 等确认条件
+---
 
-## 综合信号规则
+## 五、总结
 
-### 做多候选
+这个策略的核心不是“看某一个指标”，而是：
 
-1. 收盘价上穿 VEGAS 中轨，或处于中轨上方；
-2. 收盘价高于 EMA12，且 EMA12 上行；
-3. VWAP 斜率为正；
-4. VOSC 上升并高于信号线，表示量能改善；
-5. 近期出现看多背离，并在确认K线完成后入场。
+- 趋势方向：VEGAS通道
+- 真突破过滤：EMA12
+- 成本方向：VWAP斜率
+- 量能变化：VOSC
+- 最终入场：MACD背离
 
-### 做空候选
+这是一种多层过滤的“趋势跟随 + 量能确认 + 背离确认”的策略思路。
 
-中国大陆普通 A 股通常不支持普通股票直接做空。以下规则仅适用于允许双向交易的期货、期权、融券或其他合规品种：
+如果你需要下一步，我可以继续直接给你：
 
-1. 收盘价下穿 VEGAS 中轨，或处于中轨下方；
-2. 收盘价低于 EMA12，且 EMA12 下行；
-3. VWAP 斜率为负；
-4. VOSC 走弱并低于信号线；
-5. 近期出现看空背离，并在确认K线完成后入场。
+- 同花顺“实盘版更稳公式”（带止损/止盈）
+- Python 完整回测代码（读取CSV并输出胜率/收益/最大回撤）
+- A股实战版参数优化模板
 
-## 风险控制建议
+你只要回复：
+- “实盘版公式”
+- “完整回测”
+- “参数优化”
 
-- 每笔交易风险不超过账户权益的 0.5%～1%；
-- 止损可放在最近摆动低点/高点、VEGAS 中轨或 ATR 倍数位置；
-- 设置最大持仓数、单日最大亏损和连续亏损暂停规则；
-- 回测必须计入手续费、印花税、滑点、涨跌停无法成交和 T+1 约束；
-- A股股票需考虑只能做多、T+1、涨跌停及停牌等交易制度；
-- 不要把 MACD 背离作为单独买卖依据，避免未来函数和主观拐点调整。
-
-## 同花顺落地注意事项
-
-同花顺不同版本的公式函数、指标输出和预警接口可能存在差异。建议先在模拟环境中逐项验证：
-
-1. VEGAS 通道上下轨和中轨是否与设计一致；
-2. VWAP 是使用滚动窗口还是当日累计；
-3. VOSC 的成交量单位和 EMA 参数是否一致；
-4. MACD 背离是否采用确认后的历史摆动点；
-5. 预警信号是否只在K线收盘后触发。
-
-策略发布前应补充经过验证的同花顺公式文件和独立回测结果，不能仅凭指标信号直接实盘交易。
-
-## 建议参数
-
-| 模块 | 参数 | 初始值 |
-|---|---|---:|
-| VEGAS 通道 | N | 14 |
-| EMA 过滤 | 周期 | 12 |
-| VWAP | 窗口 | 20 |
-| VOSC | 快/慢/信号 | 12 / 26 / 9 |
-| MACD | 快/慢/信号 | 12 / 26 / 9 |
-
-以上仅为测试起点，不代表最优参数。参数应按品种、周期和交易制度进行样本外验证。
-
-## 后续开发计划
-
-- [ ] 添加经过同花顺语法验证的选股公式和预警公式
-- [ ] 添加 Python 指标计算与事件驱动回测
-- [ ] 添加手续费、滑点、涨跌停和 T+1 模拟
-- [ ] 添加样本内/样本外及滚动回测报告
-- [ ] 添加参数敏感性和最大回撤分析
+我就继续。
